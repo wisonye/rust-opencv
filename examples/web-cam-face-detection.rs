@@ -5,14 +5,10 @@ const TIPS: &'static str = "Press 'g' to toggle grayscale mode\nPress any key to
 const WINDOW_NAME: &'static str = "Web Cam Preview Window";
 
 ///
-fn draw_tips_on_frame(frame_image: &mut Mat) {
-    let text_list = TIPS.split("\n");
-    let text_coord = (5, 30); // X, Y
-    let mut text_drawing_coord_y = text_coord.1;
-
-    for (index, temp_text) in text_list.enumerate() {
-        // Get the text size, then we can draw the text in the center
-        // function variants that have the mask parameter.
+fn get_drawing_text_size<'a>(text: &'a str, font_scale: f64, font_thickness: i32) -> core::Size {
+    let mut base_line = 0;
+    imgproc::get_text_size(
+        text,
         // FONT_HERSHEY_COMPLEX        - normal size serif font
         // FONT_HERSHEY_COMPLEX_SMALL  - smaller version of FONT_HERSHEY_COMPLEX
         // FONT_HERSHEY_DUPLEX         - normal size sans-serif font (more complex than FONT_HERSHEY_SIMPLEX)
@@ -21,41 +17,62 @@ fn draw_tips_on_frame(frame_image: &mut Mat) {
         // FONT_HERSHEY_SCRIPT_SIMPLEX - hand-writing style font
         // FONT_HERSHEY_SIMPLEX        - normal size sans-serif font
         // FONT_HERSHEY_TRIPLEX        - normal size serif font (more complex than FONT_HERSHEY_COMPLEX)
-        let font_scale = 0.8;
-        let font_thickness = 1;
-        let mut base_line = 0;
-        let tip_size = imgproc::get_text_size(
-            temp_text,
-            imgproc::FONT_HERSHEY_DUPLEX,
-            font_scale,
-            font_thickness,
-            &mut base_line,
-        )
-        .unwrap();
+        imgproc::FONT_HERSHEY_DUPLEX,
+        font_scale,
+        font_thickness,
+        &mut base_line,
+    )
+    .unwrap()
+}
 
-        // let center_coord = core::Point::new(
-        // (frame_image.cols() - tip_size.width) / 2,
-        // (frame_image.rows() - tip_size.height) / 2,
-        // );
+///
+fn draw_text_on_image<'a>(
+    image: &mut Mat,
+    text: &'a str,
+    left_top_coord: core::Point,
+    font_scale: f64,
+    font_thickness: i32,
+    text_color: core::Scalar,
+) {
+    let _ = imgproc::put_text(
+        image,
+        text,
+        left_top_coord,
+        imgproc::FONT_HERSHEY_DUPLEX,
+        font_scale,
+        text_color,
+        font_thickness,
+        imgproc::LINE_AA,
+        false,
+    )
+    .unwrap();
+}
+
+///
+fn draw_tips_on_frame(frame_image: &mut Mat) {
+    let text_list = TIPS.split("\n");
+    let text_coord = (5, 30); // X, Y
+    let mut text_drawing_coord_y = text_coord.1;
+    let font_scale = 0.8;
+    let font_thickness = 1;
+
+    for (index, temp_text) in text_list.enumerate() {
+        let text_size = get_drawing_text_size(temp_text, font_scale, font_thickness);
         let drawing_coord = if index == 0 {
             core::Point::new(text_coord.0, text_drawing_coord_y)
         } else {
-            text_drawing_coord_y += tip_size.height + 10;
+            text_drawing_coord_y += text_size.height + 10;
             core::Point::new(text_coord.0, text_drawing_coord_y)
         };
 
-        let _ = imgproc::put_text(
+        draw_text_on_image(
             frame_image,
             temp_text,
             drawing_coord,
-            imgproc::FONT_HERSHEY_DUPLEX,
             font_scale,
-            core::Scalar::new(0f64, 255f64, 0f64, -1f64), // Border color (Blue, Green, Red, Alpha)
             font_thickness,
-            imgproc::LINE_AA,
-            false,
-        )
-        .unwrap();
+            core::Scalar::new(0f64, 255f64, 0f64, -1f64), // Border color (Blue, Green, Red, Alpha)
+        );
     }
 }
 
@@ -119,8 +136,8 @@ fn draw_detected_faces_on_frame(frame: &mut Mat, faces: core::Vector<core::Rect>
             frame,                                        // Dest image
             scaled_face,                                  // Rectangle to draw
             core::Scalar::new(0f64, 0f64, 255f64, -1f64), // Border color (Blue, Green, Red, Alpha)
-            5,                                            // Boarder thickness
-            8,                                            // Boarder line type
+            4,                                            // Boarder thickness
+            imgproc::LINE_AA,                             // Boarder line type
             0,
         )
         .unwrap();
@@ -128,6 +145,68 @@ fn draw_detected_faces_on_frame(frame: &mut Mat, faces: core::Vector<core::Rect>
 
     // Render the frame after merging with drawing faces
     let _ = highgui::imshow(WINDOW_NAME, frame).unwrap();
+}
+
+///
+fn draw_info_panel(
+    frame: &mut Mat,
+    frame_width: i32,
+    frame_height: i32,
+    fps: i32,
+    detected_face_amount: u8,
+) {
+    let formatted_panel_info = format!(
+        "Resolution: {} x {}\nFPS: {}\nDetected Faces: {}",
+        frame_width, frame_height, fps, detected_face_amount
+    );
+    let text_list = formatted_panel_info.split("\n");
+    let text_vertical_space = 10;
+    let font_scale = 0.7;
+    let font_thickness = 1;
+    let font_color = core::Scalar::new(0f64, 255f64, 0f64, -1f64); // Border color (Blue, Green, Red, Alpha)
+
+    // Hard-code size
+    let panel = core::Rect {
+        x: frame_width - 335,
+        y: 5,
+        width: 330,
+        height: 80,
+    };
+    // println!("panel: {:#?}", &panel);
+
+    // Draw black box
+    let _ = imgproc::rectangle(
+        frame,                                      // Dest image
+        panel,                                      // Rectangle to draw
+        core::Scalar::new(0f64, 0f64, 0f64, -1f64), // Border color (Blue, Green, Red, Alpha)
+        imgproc::FILLED,                            // Boarder thickness: Fill the entire area
+        imgproc::LINE_AA,                           // Boarder line type
+        0,
+    )
+    .unwrap();
+
+    // Draw all split text
+    let text_coord = (panel.x + 2, panel.y + 20); // X, Y
+    let mut text_drawing_coord_y = text_coord.1;
+    for (index, temp_text) in text_list.enumerate() {
+        let text_size = get_drawing_text_size(temp_text, font_scale, font_thickness);
+
+        let drawing_coord = if index == 0 {
+            core::Point::new(text_coord.0, text_drawing_coord_y)
+        } else {
+            text_drawing_coord_y += text_size.height + text_vertical_space;
+            core::Point::new(text_coord.0, text_drawing_coord_y)
+        };
+
+        draw_text_on_image(
+            frame,
+            temp_text,
+            drawing_coord,
+            font_scale,
+            font_thickness,
+            font_color,
+        );
+    }
 }
 
 ///
@@ -154,12 +233,14 @@ fn capture_from_web_cam_with_face_detection() -> opencv::Result<()> {
         panic!("Unable to open default web camera");
     }
 
-    println!("Live camera is showing, press any key to close the app.");
-
     // Create object detection classifier
     let mut face = objdetect::CascadeClassifier::new(&xml)?;
 
     let mut grayscale_mode = false;
+
+    let cam_width = cam.get(videoio::CAP_PROP_FRAME_WIDTH).unwrap();
+    let cam_height = cam.get(videoio::CAP_PROP_FRAME_HEIGHT).unwrap();
+    let cam_fps = cam.get(videoio::CAP_PROP_FPS).unwrap();
 
     loop {
         // Read every frame
@@ -175,6 +256,15 @@ fn capture_from_web_cam_with_face_detection() -> opencv::Result<()> {
 
         // Do face detection
         let detected_faces = face_detection_on_frame(&mut face, &mut video_frame).unwrap();
+
+        // Draw info panel
+        draw_info_panel(
+            &mut video_frame,
+            cam_width as i32,
+            cam_height as i32,
+            cam_fps as i32,
+            detected_faces.len() as u8,
+        );
 
         // println!("Detected face amount: {}", faces.len());
 
