@@ -1,6 +1,8 @@
-use opencv::{core, highgui, imgproc, prelude::*, videoio};
+use opencv::{core, highgui, imgproc, objdetect, prelude::*, types, videoio};
+use std::{thread, time::Duration};
 
 const TIPS: &'static str = "Press 'g' to toggle grayscale mode\nPress any key to exit";
+const WINDOW_NAME: &'static str = "Web Cam Preview Window";
 
 ///
 fn draw_tips_on_frame(frame_image: &mut Mat) {
@@ -58,55 +60,141 @@ fn draw_tips_on_frame(frame_image: &mut Mat) {
 }
 
 ///
-fn capture_from_web_cam() -> opencv::Result<()> {
-    // Setup render window
-    let window_name = "Web Cam Preview Window";
+fn face_detection_on_frame(
+    face: &mut objdetect::CascadeClassifier,
+    frame: &Mat,
+) -> opencv::Result<core::Vector<core::Rect>> {
+    // Convert every frame into gray color
+    let mut gray = Mat::default()?;
+    imgproc::cvt_color(&frame, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
+
+    // Reduce the image size for fast face detection
+    let mut reduced = Mat::default()?;
+    imgproc::resize(
+        &gray,
+        &mut reduced,
+        core::Size {
+            width: 0,
+            height: 0,
+        },
+        0.25f64,
+        0.25f64,
+        imgproc::INTER_LINEAR,
+    )?;
+
+    // Run face detection
+    let mut detected_faces = types::VectorOfRect::new();
+    face.detect_multi_scale(
+        &reduced,
+        &mut detected_faces,
+        1.1,
+        2,
+        objdetect::CASCADE_SCALE_IMAGE,
+        core::Size {
+            width: 30,
+            height: 30,
+        },
+        core::Size {
+            width: 0,
+            height: 0,
+        },
+    )?;
+
+    Ok(detected_faces)
+}
+
+///
+fn draw_detected_faces_on_frame(frame: &mut Mat, faces: core::Vector<core::Rect>) {
+    for temp_face in faces {
+        // println!("temp_face: {:#?}", temp_face);
+
+        let scaled_face = core::Rect {
+            x: temp_face.x * 4,
+            y: temp_face.y * 4,
+            width: temp_face.width * 4,
+            height: temp_face.height * 4,
+        };
+
+        let _ = imgproc::rectangle(
+            frame,                                        // Dest image
+            scaled_face,                                  // Rectangle to draw
+            core::Scalar::new(0f64, 0f64, 255f64, -1f64), // Border color (Blue, Green, Red, Alpha)
+            5,                                            // Boarder thickness
+            8,                                            // Boarder line type
+            0,
+        )
+        .unwrap();
+    }
+
+    // Render the frame after merging with drawing faces
+    let _ = highgui::imshow(WINDOW_NAME, frame).unwrap();
+}
+
+///
+fn capture_from_web_cam_with_face_detection() -> opencv::Result<()> {
     let window_flags = highgui::WINDOW_AUTOSIZE
         | highgui::WINDOW_KEEPRATIO
         | highgui::WINDOW_OPENGL
         | highgui::WINDOW_NORMAL;
-    highgui::named_window(window_name, window_flags).unwrap();
+    highgui::named_window(WINDOW_NAME, window_flags).unwrap();
 
     // Create video capture (camera), `0` means default webcam.
     // You can pass `1` for the second camera, `2` for the third camera.
+    // Load face detection settings
     #[cfg(not(feature = "opencv-32"))]
-    let mut cam = videoio::VideoCapture::new(0, videoio::CAP_ANY)?;
+    let (xml, mut cam) = {
+        (
+            core::find_file("haarcascades/haarcascade_frontalface_alt.xml", true, false)?,
+            videoio::VideoCapture::new(0, videoio::CAP_ANY)?,
+        )
+    };
 
-    // prelude::VideoCaptureTrait (open, open_file, is_opened, read, etc...)
     let is_cam_opened = videoio::VideoCapture::is_opened(&cam)?;
     if !is_cam_opened {
         panic!("Unable to open default web camera");
     }
 
+    println!("Live camera is showing, press any key to close the app.");
+
+    // Create object detection classifier
+    let mut face = objdetect::CascadeClassifier::new(&xml)?;
+
     let mut grayscale_mode = false;
 
     loop {
-        // Render every frame into preview window
+        // Read every frame
         let mut video_frame = core::Mat::default()?;
         cam.read(&mut video_frame)?;
-        if video_frame.size()?.width > 0 {
-            draw_tips_on_frame(&mut video_frame);
+        if video_frame.size()?.width == 0 {
+            thread::sleep(Duration::from_secs(5));
+            continue;
+        }
 
-            if grayscale_mode {
-                let mut grayscale_frame = Mat::default()?;
-                // Do a color conversion from `BRG(blue Red Green 3 channels)` to `Grayscale`(1 channel)
-                let _ = imgproc::cvt_color(
-                    &video_frame,
-                    &mut grayscale_frame,
-                    imgproc::COLOR_BGR2GRAY,
-                    0,
-                )
-                .unwrap();
-                highgui::imshow(window_name, &grayscale_frame)?;
-            } else {
-                highgui::imshow(window_name, &video_frame)?;
-            }
+        // Draw tips
+        draw_tips_on_frame(&mut video_frame);
+
+        // Do face detection
+        let detected_faces = face_detection_on_frame(&mut face, &mut video_frame).unwrap();
+
+        // println!("Detected face amount: {}", faces.len());
+
+        // Draw a rectangle for each face result on top of the particular (frame) image
+        if grayscale_mode {
+            let mut grayscale_frame = Mat::default()?;
+            // Do a color conversion from `BRG(blue Red Green 3 channels)` to `Grayscale`(1 channel)
+            let _ = imgproc::cvt_color(
+                &video_frame,
+                &mut grayscale_frame,
+                imgproc::COLOR_BGR2GRAY,
+                0,
+            )
+            .unwrap();
+            draw_detected_faces_on_frame(&mut grayscale_frame, detected_faces);
+        } else {
+            draw_detected_faces_on_frame(&mut video_frame, detected_faces);
         }
 
         let key = highgui::wait_key(10)?;
-        // if key > 0 {
-        // println!("You pressed key: {}", &key);
-        // }
 
         // Press `g` key to toggle `grayscale_mode`
         if key == 103 {
@@ -130,7 +218,7 @@ fn capture_from_web_cam() -> opencv::Result<()> {
 
 ///
 fn main() {
-    let close_capture_successfully = match capture_from_web_cam() {
+    let close_capture_successfully = match capture_from_web_cam_with_face_detection() {
         Ok(_) => true,
         Err(error) => {
             println!("Close video capture abnormally: {}", error);

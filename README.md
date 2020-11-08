@@ -44,5 +44,5 @@ fail with `dyld: Library not loaded: @rpath/libclang.dylib` error. It seems the
 ```bash
 cargo run --example show-image-in-window
 cargo run --example video-capture-in-web-cam
-cargo run --example video-capture-web-cam-with-face-detection
+cargo run --example web-cam-face-detection
 ```
