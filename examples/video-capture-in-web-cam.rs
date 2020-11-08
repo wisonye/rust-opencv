@@ -67,7 +67,8 @@ fn capture_from_web_cam() -> opencv::Result<()> {
         | highgui::WINDOW_NORMAL;
     highgui::named_window(window_name, window_flags).unwrap();
 
-    // Create video capture (camera)
+    // Create video capture (camera), `0` means default webcam.
+    // You can pass `1` for the second camera, `2` for the third camera.
     #[cfg(not(feature = "opencv-32"))]
     let mut cam = videoio::VideoCapture::new(0, videoio::CAP_ANY)?;
 
