@@ -163,30 +163,70 @@ fn draw_info_panel(
     let text_vertical_space = 10;
     let font_scale = 0.7;
     let font_thickness = 1;
-    let font_color = core::Scalar::new(0f64, 255f64, 0f64, -1f64); // Border color (Blue, Green, Red, Alpha)
+    let font_color = core::Scalar::new(251., 235., 220., -1.); // (Blue, Green, Red, Alpha)
+    let info_panel_background_color = core::Scalar::new(15., 6., 3., -1.); // (Blue, Green, Red, Alpha)
+    let info_panel_width = 280;
+    let info_panel_height = 88;
+    let info_panel_margin = 2;
 
-    // Hard-code size
-    let panel = core::Rect {
-        x: frame_width - 335,
-        y: 5,
-        width: 330,
-        height: 80,
+    // For getting the better performance, we create a `ROI`(Region Of Interest) from the origin
+    // frame. This won't copy any data, as it's just a mut reference which will be affected if
+    // we modify it!!!
+    let roi = core::Rect {
+        x: frame_width - info_panel_width - info_panel_margin,
+        y: info_panel_margin,
+        width: info_panel_width,
+        height: info_panel_height,
     };
-    // println!("panel: {:#?}", &panel);
+    let mut panel_roi_ref = core::Mat::roi(frame, roi).unwrap();
 
-    // Draw black box
-    let _ = imgproc::rectangle(
-        frame,                                      // Dest image
-        panel,                                      // Rectangle to draw
-        core::Scalar::new(0f64, 0f64, 0f64, -1f64), // Border color (Blue, Green, Red, Alpha)
-        imgproc::FILLED,                            // Boarder thickness: Fill the entire area
-        imgproc::LINE_AA,                           // Boarder line type
-        0,
+    // Create a temp draw area with the same size of `roi`
+    let mut panel_background = core::Mat::new_size_with_default(
+        core::Size {
+            width: panel_roi_ref.cols(),
+            height: panel_roi_ref.rows(),
+        },
+        panel_roi_ref.typ().unwrap(),
+        core::Scalar::new(0., 0., 0., -1.),
     )
     .unwrap();
+    let panel_background_area = core::Rect {
+        x: 0,
+        y: 0,
+        width: roi.width,
+        height: roi.height,
+    };
+    // println!("roi: {:#?}", roi);
+    // println!("panel_roi_ref: {:#?}", panel_roi_ref);
+    // println!("panel_background_area: {:#?}", panel_background_area);
+    // println!("panel_background: {:#?}", panel_background);
+
+    // Fill the color
+    let _ = imgproc::rectangle(
+        &mut panel_background,       // Dest image
+        panel_background_area,       // Rectangle to draw
+        info_panel_background_color, // Boarder color
+        imgproc::FILLED,             // Boarder thickness: Fill the entire area
+        imgproc::LINE_AA,            // Boarder line type
+        0,
+    );
+
+    // Merge `panel_roi_ref` and `panel_background` together with the particular alpha(transparent)
+    // settings. So, we finished drawing a transparent background on top of the original frame:)
+    //
+    // `src image alpha` + `copy image alpha` should equal `1.0`. Just like a transparent percentage.
+    let _ = core::add_weighted(
+        &panel_roi_ref.clone(), // Src image
+        0.3,                    // Src image alpha
+        &panel_background,      // Copy image
+        0.7,                    // Copy image alpha
+        0.,                     // Gamma
+        &mut panel_roi_ref,     // The merge dest image
+        -1,
+    );
 
     // Draw all split text
-    let text_coord = (panel.x + 2, panel.y + 20); // X, Y
+    let text_coord = (roi.x + 6, roi.y + 25); // X, Y
     let mut text_drawing_coord_y = text_coord.1;
     for (index, temp_text) in text_list.enumerate() {
         let text_size = get_drawing_text_size(temp_text, font_scale, font_thickness);
